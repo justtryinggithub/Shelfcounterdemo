@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Shelf Counter</string>
+
+    <!-- Welcome -->
+    <string name="welcome_title">Shelf Counter</string>
+    <string name="welcome_subtitle">Demo · barcode-based product counting</string>
+    <string name="welcome_body">Point the camera at a row of products. The app reads the 1D barcodes and counts how many identical items are lined up.</string>
+    <string name="step_1">1. Tap Start counting and aim at the shelf</string>
+    <string name="step_2">2. Keep the whole row in the frame for a moment</string>
+    <string name="step_3">3. Tap Close camera to see the list</string>
+    <string name="start_counting">Start counting</string>
+    <string name="supported_codes">EAN-13 · EAN-8 · UPC-A/E · Code 128/39/93 · ITF · Codabar · works offline</string>
+
+    <!-- Permission -->
+    <string name="permission_title">Camera access needed</string>
+    <string name="permission_message">Shelf Counter needs the camera to read barcodes. You can allow it in the app settings.</string>
+    <string name="open_settings">Open settings</string>
+    <string name="permission_denied">Camera permission is required to count products.</string>
+
+    <!-- Scan -->
+    <string name="last_item_label">Last item recognized</string>
+    <string name="waiting_for_barcode">Waiting for a barcode…</string>
+    <string name="format_line">%1$s</string>
+    <string name="identical_items">identical items</string>
+    <string name="scan_hint">Point the camera at the barcodes of a row of products</string>
+    <string name="summary">Products: %1$d · Items: %2$d</string>
+    <string name="light_on">Light on</string>
+    <string name="light_off">Light off</string>
+    <string name="no_flash">This camera has no flashlight</string>
+    <string name="reset">Reset</string>
+    <string name="close_camera">Close camera</string>
+
+    <!-- Results -->
+    <string name="results_title">Count results</string>
+    <string name="results_summary">%1$d products · %2$d objects in total</string>
+    <string name="objects_eq">number of objects = %1$d</string>
+    <string name="results_empty">No barcodes were counted.\nTap New count and try again.</string>
+    <string name="share_list">Share list</string>
+    <string name="share_title">Share count results</string>
+    <string name="home">Home</string>
+    <string name="new_count">New count</string>
+</resources>

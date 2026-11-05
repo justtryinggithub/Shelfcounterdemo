@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black">
+
+    <androidx.camera.view.PreviewView
+        android:id="@+id/previewView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <com.demo.shelfcounter.BarcodeOverlayView
+        android:id="@+id/overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <LinearLayout
+        android:id="@+id/uiLayer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <!-- Overlay: last item recognized + count -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_margin="16dp"
+            android:background="@drawable/bg_panel"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:letterSpacing="0.08"
+                android:text="@string/last_item_label"
+                android:textAllCaps="true"
+                android:textColor="@color/on_dark_muted"
+                android:textSize="12sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/lastBarcode"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:fontFamily="monospace"
+                        android:singleLine="true"
+                        android:text="—"
+                        android:textColor="@color/on_dark"
+                        android:textSize="22sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/lastFormat"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="@string/waiting_for_barcode"
+                        android:textColor="@color/on_dark_muted"
+                        android:textSize="13sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:gravity="center_horizontal"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/lastCount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:includeFontPadding="false"
+                        android:minWidth="56dp"
+                        android:gravity="center"
+                        android:text="0"
+                        android:textColor="@color/count_accent"
+                        android:textSize="46sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/identical_items"
+                        android:textColor="@color/on_dark_muted"
+                        android:textSize="11sp" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/hint"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:paddingStart="40dp"
+            android:paddingEnd="40dp"
+            android:shadowColor="#CC000000"
+            android:shadowDx="0"
+            android:shadowDy="1"
+            android:shadowRadius="6"
+            android:text="@string/scan_hint"
+            android:textColor="@color/on_dark"
+            android:textSize="17sp" />
+
+        <!-- Bottom controls -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_margin="16dp"
+            android:background="@drawable/bg_panel"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:id="@+id/summary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:textColor="@color/on_dark"
+                android:textSize="15sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/torchButton"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/light_on"
+                    android:textColor="@color/on_dark"
+                    app:strokeColor="@color/on_dark_muted" />
+
+                <Button
+                    android:id="@+id/resetButton"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:layout_weight="1"
+                    android:text="@string/reset"
+                    android:textColor="@color/on_dark"
+                    app:strokeColor="@color/on_dark_muted" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/closeButton"
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:layout_marginTop="6dp"
+                android:text="@string/close_camera"
+                android:textSize="17sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+</FrameLayout>
