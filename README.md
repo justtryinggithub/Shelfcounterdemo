@@ -10,12 +10,12 @@ any Android 8.0+ phone.
 2. **Camera screen** that stays open while you **walk along the aisle**. For each row, hold
    the phone for about a second so the **barcode** (on the first item or on the shelf label)
    and the **products behind it** are in view, at an angle:
-   - after 3 consistent reads the barcode becomes a product in the list (beep + vibration);
+   - after 2 consistent reads the barcode becomes a product in the list (beep + vibration);
    - the app grabs a frame, takes the item closest to the barcode as the **first item**
      (ML Kit object detection) and counts the **identical items** by shape;
    - the top panel shows the **last item recognized**, its **count** and a small picture of
      the counted frame with the items numbered (1 = first item);
-   - while the barcode stays in view it recounts about every 1.5 s and keeps the
+   - while the barcode stays in view it recounts about every second and keeps the
      **highest** count, so a better angle can only improve it;
    - **− / +** fix the last product by hand (automatic counting then stops for it);
      **Reset** clears everything; flashlight, pinch-to-zoom and tap-to-focus are available.
@@ -92,6 +92,6 @@ Source layout (`app/src/main/java/com/demo/shelfcounter/`):
 |---|---|
 | `WelcomeActivity.kt` | welcome page, camera permission |
 | `ScanActivity.kt` | camera, barcode reading, continuous count loop, overlay panel |
-| `ShapeCounter.kt` | counts identical items by shape (OpenCV SIFT + RANSAC) |
+| `ShapeCounter.kt` | counts identical items: same label (SIFT + RANSAC) and same shape (cap template chain) |
 | `BarcodeOverlayView.kt` | barcode frames, numbered item boxes, box drawing |
 | `ResultActivity.kt` | final list and sharing |
