@@ -4,9 +4,12 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.Typeface
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.os.Build
@@ -47,35 +50,39 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.hypot
 import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 /**
- * Flow:
- *  1. SCANNING  – live camera; the first 1D barcode read in 3 frames is saved as the product.
- *  2. COUNTING  – "Count items" freezes the image; ML Kit finds the item closest to the
- *                 barcode (the first item of the row), then [ShapeCounter] counts the
- *                 identical items behind it.
- *  3. REVIEW    – numbered boxes on the photo; the user can redraw the first item,
- *                 adjust the count with −/+, then Save (adds to the list) or Retake.
+ * Continuous counting: the camera stays open while the user walks along the aisle.
+ *
+ *  - Every 1D barcode read in [CONFIRM_FRAMES] frames becomes a product in the list.
+ *  - While a product's barcode is in view, the app grabs a frame about every
+ *    [RECOUNT_MS] ms, finds the item closest to the barcode (ML Kit object detection,
+ *    the first item of the row) and counts the identical items behind it ([ShapeCounter]).
+ *  - A product keeps the highest count seen, so a better angle can only improve it.
+ *  - −/+ fix the last product by hand (automatic counting then stops for it).
  */
 class ScanActivity : AppCompatActivity() {
 
-    private enum class Mode { SCANNING, COUNTING, REVIEW }
-
-    private class Saved(val format: Int, var count: Int)
+    private class Product(val value: String, val format: Int) {
+        var count = 1
+        var manual = false
+        var lastCountedAt = 0L
+        var thumbnail: Bitmap? = null
+    }
 
     private lateinit var previewView: PreviewView
-    private lateinit var frozenView: ImageView
     private lateinit var overlay: BarcodeOverlayView
     private lateinit var lastBarcode: TextView
     private lateinit var lastFormat: TextView
     private lateinit var lastCount: TextView
-    private lateinit var summary: TextView
-    private lateinit var hint: TextView
+    private lateinit var thumbnailView: ImageView
     private lateinit var progress: ProgressBar
+    private lateinit var summary: TextView
     private lateinit var torchButton: Button
-    private lateinit var countButton: Button
-    private lateinit var liveControls: View
-    private lateinit var reviewControls: View
+    private lateinit var minusButton: Button
+    private lateinit var plusButton: Button
 
     private lateinit var scanner: BarcodeScanner
     private lateinit var objectDetector: ObjectDetector
@@ -86,22 +93,15 @@ class ScanActivity : AppCompatActivity() {
     private var finishing = false
     private var openCvReady = false
 
-    private var mode = Mode.SCANNING
-
-    // Barcode being counted.
-    private var currentValue: String? = null
-    private var currentFormat = Barcode.FORMAT_UNKNOWN
+    private val products = LinkedHashMap<String, Product>()
     private val frameHits = HashMap<String, Int>()
-    private var lastBarcodeBox: Rect? = null
-    private var lastBarcodeSeenAt = 0L
+    private val lastSeen = HashMap<String, Long>()
+    private var lastValue: String? = null
+    private var shownThumbnail: Bitmap? = null
 
-    // Current count (REVIEW mode).
-    private var frozenBitmap: Bitmap? = null
-    private var countValue = 0
-    private var countJob = 0
-
-    // Saved results, in the order they were counted.
-    private val results = LinkedHashMap<String, Saved>()
+    private var busy = false
+    private var countingValue: String? = null
+    private var lastJobEndedAt = 0L
 
     private val cameraPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -123,18 +123,16 @@ class ScanActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         previewView = findViewById(R.id.previewView)
-        frozenView = findViewById(R.id.frozenView)
         overlay = findViewById(R.id.overlay)
         lastBarcode = findViewById(R.id.lastBarcode)
         lastFormat = findViewById(R.id.lastFormat)
         lastCount = findViewById(R.id.lastCount)
-        summary = findViewById(R.id.summary)
-        hint = findViewById(R.id.hint)
+        thumbnailView = findViewById(R.id.thumbnail)
         progress = findViewById(R.id.progress)
+        summary = findViewById(R.id.summary)
         torchButton = findViewById(R.id.torchButton)
-        countButton = findViewById(R.id.countButton)
-        liveControls = findViewById(R.id.liveControls)
-        reviewControls = findViewById(R.id.reviewControls)
+        minusButton = findViewById(R.id.minusButton)
+        plusButton = findViewById(R.id.plusButton)
         findViewById<View>(R.id.uiLayer).applySystemBarInsets()
 
         openCvReady = try {
@@ -142,6 +140,7 @@ class ScanActivity : AppCompatActivity() {
         } catch (t: Throwable) {
             false
         }
+        if (!openCvReady) Toast.makeText(this, R.string.opencv_failed, Toast.LENGTH_LONG).show()
 
         // 1D (linear) barcodes only.
         val options = BarcodeScannerOptions.Builder()
@@ -172,19 +171,12 @@ class ScanActivity : AppCompatActivity() {
             null
         }
 
-        overlay.onBoxDrawn = { viewBox -> onUserDrewBox(viewBox) }
-
         findViewById<Button>(R.id.closeButton).setOnClickListener { finishWithResults() }
-        findViewById<Button>(R.id.resetButton).setOnClickListener { resetCurrent() }
-        countButton.setOnClickListener { startCount() }
-        findViewById<Button>(R.id.retakeButton).setOnClickListener { backToScanning(keepBarcode = true) }
-        findViewById<Button>(R.id.saveButton).setOnClickListener { saveCount() }
-        findViewById<Button>(R.id.minusButton).setOnClickListener { adjustCount(-1) }
-        findViewById<Button>(R.id.plusButton).setOnClickListener { adjustCount(+1) }
+        findViewById<Button>(R.id.resetButton).setOnClickListener { resetAll() }
+        minusButton.setOnClickListener { adjustLast(-1) }
+        plusButton.setOnClickListener { adjustLast(+1) }
         torchButton.setOnClickListener { toggleTorch() }
-        onBackPressedDispatcher.addCallback(this) {
-            if (mode == Mode.SCANNING) finishWithResults() else backToScanning(keepBarcode = true)
-        }
+        onBackPressedDispatcher.addCallback(this) { finishWithResults() }
 
         updateUi()
 
@@ -230,216 +222,221 @@ class ScanActivity : AppCompatActivity() {
     }
 
     private fun onBarcodes(barcodes: List<Barcode>) {
-        if (finishing || mode != Mode.SCANNING) return
+        if (finishing) return
+        val now = SystemClock.elapsedRealtime()
 
         val valid = barcodes.filter { !it.rawValue.isNullOrBlank() && it.boundingBox != null }
-        var newlySaved = false
-
         for (barcode in valid) {
             val value = barcode.rawValue!!.trim()
+            // A barcode out of view for a while must be confirmed again.
+            if (now - (lastSeen[value] ?: 0L) > HIT_RESET_MS) frameHits[value] = 0
+            lastSeen[value] = now
             val hits = (frameHits[value] ?: 0) + 1
             frameHits[value] = hits
-            if (hits >= CONFIRM_FRAMES && value != currentValue) {
-                currentValue = value
-                currentFormat = barcode.format
-                newlySaved = true
-            }
-            if (value == currentValue) {
-                lastBarcodeBox = Rect(barcode.boundingBox!!)
-                lastBarcodeSeenAt = SystemClock.elapsedRealtime()
+            if (hits >= CONFIRM_FRAMES && !products.containsKey(value)) {
+                products[value] = Product(value, barcode.format)
+                lastValue = value
+                feedback()
+                pulse(lastBarcode)
             }
         }
 
         overlay.setBoxes(valid.map { barcode ->
             val value = barcode.rawValue!!.trim()
-            BarcodeOverlayView.Box(barcode.boundingBox!!, value, value == currentValue)
+            BarcodeOverlayView.Box(barcode.boundingBox!!, value, products.containsKey(value))
         })
 
-        if (newlySaved) {
-            feedback()
-            pulse(lastBarcode)
-            updateUi()
+        // Count one product at a time: the visible one that was counted least recently.
+        if (!busy && openCvReady && now - lastJobEndedAt >= MIN_GAP_MS) {
+            val next = valid
+                .mapNotNull { b -> products[b.rawValue!!.trim()]?.let { p -> p to b } }
+                .filter { (p, _) -> !p.manual && now - p.lastCountedAt >= RECOUNT_MS }
+                .minByOrNull { (p, _) -> p.lastCountedAt }
+            if (next != null) startCount(next.first, Rect(next.second.boundingBox!!))
         }
+
+        updateUi()
     }
 
     // ---------------------------------------------------------------- counting
 
-    private fun startCount() {
-        if (currentValue == null) {
-            Toast.makeText(this, R.string.scan_barcode_first, Toast.LENGTH_SHORT).show()
-            return
-        }
-        if (!openCvReady) {
-            Toast.makeText(this, R.string.opencv_failed, Toast.LENGTH_LONG).show()
-            return
-        }
-        val bitmap = previewView.bitmap
-        if (bitmap == null || overlay.width == 0) {
-            Toast.makeText(this, R.string.no_image, Toast.LENGTH_SHORT).show()
-            return
-        }
+    private fun startCount(product: Product, barcodeViewBox: Rect) {
+        val bitmap = previewView.bitmap ?: return
+        if (overlay.width == 0 || overlay.height == 0) return
 
-        // Barcode position, if it was in view a moment ago (view coordinates).
-        val barcodeBox = lastBarcodeBox?.takeIf {
-            SystemClock.elapsedRealtime() - lastBarcodeSeenAt < BARCODE_RECENT_MS
-        }
+        busy = true
+        countingValue = product.value
+        lastValue = product.value
 
-        frozenBitmap = bitmap
-        frozenView.setImageBitmap(bitmap)
-        frozenView.visibility = View.VISIBLE
-        overlay.clearAll()
-        setMode(Mode.COUNTING, getString(R.string.hint_finding))
-
-        val job = ++countJob
-        objectDetector.process(InputImage.fromBitmap(bitmap, 0))
-            .addOnSuccessListener { objects ->
-                if (job != countJob || mode != Mode.COUNTING) return@addOnSuccessListener
-                val sx = bitmap.width.toFloat() / overlay.width
-                val sy = bitmap.height.toFloat() / overlay.height
-                val barcodeInBitmap = barcodeBox?.let {
-                    RectF(it.left * sx, it.top * sy, it.right * sx, it.bottom * sy)
-                }
-                val boxes = objects.map { RectF(it.boundingBox) }
-                val first = pickFirstItem(boxes, barcodeInBitmap, bitmap.width, bitmap.height)
-                if (first == null) askToDraw() else runCount(bitmap, first)
-            }
-            .addOnFailureListener {
-                if (job == countJob && mode == Mode.COUNTING) askToDraw()
-            }
-    }
-
-    /** The detected object closest to the barcode; without a barcode, the biggest one. */
-    private fun pickFirstItem(boxes: List<RectF>, barcode: RectF?, w: Int, h: Int): RectF? {
-        val imageArea = w.toFloat() * h
-        val candidates = boxes.filter {
-            val area = it.width() * it.height()
-            area > imageArea * 0.01f && area < imageArea * 0.8f
-        }
-        if (candidates.isEmpty()) return null
-        if (barcode == null) return candidates.maxByOrNull { it.width() * it.height() }
-        val cx = barcode.centerX()
-        val cy = barcode.centerY()
-        return candidates.minByOrNull { box ->
-            val dx = max(0f, max(box.left - cx, cx - box.right))
-            val dy = max(0f, max(box.top - cy, cy - box.bottom))
-            hypot(dx, dy)
-        }
-    }
-
-    private fun askToDraw() {
-        overlay.setItems(null, emptyList())
-        countValue = 0
-        setMode(Mode.REVIEW, getString(R.string.hint_draw_box))
-    }
-
-    private fun onUserDrewBox(viewBox: RectF) {
-        val bitmap = frozenBitmap ?: return
-        if (mode != Mode.REVIEW) return
         val sx = bitmap.width.toFloat() / overlay.width
         val sy = bitmap.height.toFloat() / overlay.height
-        val box = RectF(viewBox.left * sx, viewBox.top * sy, viewBox.right * sx, viewBox.bottom * sy)
-        box.intersect(0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat())
-        runCount(bitmap, box)
+        val barcode = RectF(
+            barcodeViewBox.left * sx, barcodeViewBox.top * sy,
+            barcodeViewBox.right * sx, barcodeViewBox.bottom * sy
+        )
+
+        objectDetector.process(InputImage.fromBitmap(bitmap, 0))
+            .addOnSuccessListener { objects ->
+                if (finishing || isDestroyed) return@addOnSuccessListener
+                val first = pickFirstItem(objects.map { RectF(it.boundingBox) }, barcode, bitmap.width, bitmap.height)
+                if (first == null) {
+                    finishCount(product, null, null)
+                    return@addOnSuccessListener
+                }
+                worker.execute {
+                    var result: ShapeCounter.Result? = null
+                    var thumb: Bitmap? = null
+                    try {
+                        val r = ShapeCounter.count(bitmap, first)
+                        result = r
+                        thumb = renderThumbnail(bitmap, r)
+                    } catch (t: Throwable) {
+                        // Count failed on this frame; the next frame will try again.
+                    }
+                    runOnUiThread { finishCount(product, result, thumb) }
+                }
+            }
+            .addOnFailureListener {
+                if (!finishing && !isDestroyed) finishCount(product, null, null)
+            }
     }
 
-    private fun runCount(bitmap: Bitmap, first: RectF) {
-        val job = ++countJob
-        val sx = overlay.width.toFloat() / bitmap.width
-        val sy = overlay.height.toFloat() / bitmap.height
-        fun toView(r: RectF) = RectF(r.left * sx, r.top * sy, r.right * sx, r.bottom * sy)
+    private fun finishCount(product: Product, result: ShapeCounter.Result?, thumb: Bitmap?) {
+        busy = false
+        countingValue = null
+        lastJobEndedAt = SystemClock.elapsedRealtime()
+        if (finishing || isDestroyed) return
+        product.lastCountedAt = lastJobEndedAt
 
-        overlay.setItems(toView(first), emptyList())
-        setMode(Mode.COUNTING, getString(R.string.hint_counting))
-
-        worker.execute {
-            val result = try {
-                ShapeCounter.count(bitmap, first)
-            } catch (t: Throwable) {
-                ShapeCounter.Result(RectF(first), emptyList(), 0)
-            }
-            runOnUiThread {
-                if (isFinishing || isDestroyed || job != countJob || mode != Mode.COUNTING) return@runOnUiThread
-                overlay.setItems(toView(result.reference), result.others.map { toView(it) })
-                countValue = result.count
+        // Ignore results for a product that was reset or fixed by hand meanwhile.
+        if (result != null && products[product.value] === product && !product.manual) {
+            if (result.count > product.count) {
+                product.count = result.count
                 feedback()
                 pulse(lastCount)
-                setMode(Mode.REVIEW, getString(R.string.hint_result, result.count))
             }
+            if (result.count >= product.count && thumb != null) product.thumbnail = thumb
         }
+        updateUi()
     }
 
-    private fun adjustCount(delta: Int) {
-        if (mode != Mode.REVIEW) return
-        countValue = max(0, countValue + delta)
+    /** The detected object closest to the barcode (the smallest one if it contains it). */
+    private fun pickFirstItem(boxes: List<RectF>, barcode: RectF, w: Int, h: Int): RectF? {
+        val imageArea = w.toFloat() * h
+        val cx = barcode.centerX()
+        val cy = barcode.centerY()
+        return boxes
+            .filter {
+                val area = it.width() * it.height()
+                area > imageArea * 0.01f && area < imageArea * 0.8f
+            }
+            .minWithOrNull(compareBy<RectF>({ box ->
+                val dx = max(0f, max(box.left - cx, cx - box.right))
+                val dy = max(0f, max(box.top - cy, cy - box.bottom))
+                hypot(dx, dy)
+            }, { box -> box.width() * box.height() }))
+    }
+
+    /** A small picture of the counted area, with the items numbered (1 = first item). */
+    private fun renderThumbnail(bitmap: Bitmap, result: ShapeCounter.Result): Bitmap {
+        val all = listOf(result.reference) + result.others
+        val area = RectF(all[0])
+        all.forEach { area.union(it) }
+        val padX = area.width() * 0.12f
+        val padY = area.height() * 0.08f
+        area.inset(-padX, -padY)
+        val crop = Rect(
+            max(0, area.left.roundToInt()), max(0, area.top.roundToInt()),
+            min(bitmap.width, area.right.roundToInt()), min(bitmap.height, area.bottom.roundToInt())
+        )
+        if (crop.width() < 2 || crop.height() < 2) crop.set(0, 0, bitmap.width, bitmap.height)
+
+        val scale = min(1f, THUMB_MAX_PX / max(crop.width(), crop.height()).toFloat())
+        val outW = max(1, (crop.width() * scale).roundToInt())
+        val outH = max(1, (crop.height() * scale).roundToInt())
+        val out = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+        canvas.drawBitmap(bitmap, crop, Rect(0, 0, outW, outH), Paint(Paint.FILTER_BITMAP_FLAG))
+
+        val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = max(2f, outW / 80f)
+        }
+        val badge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+        val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            typeface = Typeface.DEFAULT_BOLD
+            textAlign = Paint.Align.CENTER
+            textSize = max(14f, outW / 9f)
+        }
+        val radius = text.textSize * 0.8f
+        all.forEachIndexed { i, r ->
+            val color = if (i == 0) 0xFF4ADE80.toInt() else 0xFF38BDF8.toInt()
+            val box = RectF(
+                (r.left - crop.left) * scale, (r.top - crop.top) * scale,
+                (r.right - crop.left) * scale, (r.bottom - crop.top) * scale
+            )
+            stroke.color = color
+            canvas.drawRect(box, stroke)
+            badge.color = color
+            val bx = max(radius, min(box.left + radius, outW - radius))
+            val by = max(radius, min(box.top + radius, outH - radius))
+            canvas.drawCircle(bx, by, radius, badge)
+            canvas.drawText((i + 1).toString(), bx, by - (text.descent() + text.ascent()) / 2f, text)
+        }
+        return out
+    }
+
+    // ---------------------------------------------------------------- manual fixes
+
+    private fun adjustLast(delta: Int) {
+        val product = lastValue?.let { products[it] } ?: return
+        product.count = max(0, product.count + delta)
+        product.manual = true
         pulse(lastCount)
         updateUi()
     }
 
-    private fun saveCount() {
-        if (mode != Mode.REVIEW) return
-        val value = currentValue ?: return
-        if (countValue > 0) {
-            val entry = results.getOrPut(value) { Saved(currentFormat, 0) }
-            entry.count += countValue
-            Toast.makeText(this, getString(R.string.saved_toast, value, countValue), Toast.LENGTH_SHORT).show()
-        }
-        backToScanning(keepBarcode = false)
-    }
-
-    private fun backToScanning(keepBarcode: Boolean) {
-        countJob++
-        frozenView.setImageDrawable(null)
-        frozenView.visibility = View.GONE
-        frozenBitmap = null
-        countValue = 0
-        overlay.clearAll()
-        if (!keepBarcode) resetBarcode()
-        setMode(Mode.SCANNING, null)
-    }
-
-    private fun resetCurrent() {
-        resetBarcode()
+    private fun resetAll() {
+        products.clear()
+        frameHits.clear()
+        lastSeen.clear()
+        lastValue = null
         overlay.clearAll()
         updateUi()
     }
 
-    private fun resetBarcode() {
-        currentValue = null
-        currentFormat = Barcode.FORMAT_UNKNOWN
-        frameHits.clear()
-        lastBarcodeBox = null
-        lastBarcodeSeenAt = 0L
-    }
-
     // ---------------------------------------------------------------- UI
 
-    private fun setMode(newMode: Mode, hintText: String?) {
-        mode = newMode
-        overlay.drawingEnabled = newMode == Mode.REVIEW
-        progress.visibility = if (newMode == Mode.COUNTING) View.VISIBLE else View.GONE
-        liveControls.visibility = if (newMode == Mode.SCANNING) View.VISIBLE else View.GONE
-        reviewControls.visibility = if (newMode == Mode.REVIEW) View.VISIBLE else View.GONE
-        updateUi(hintText)
-    }
-
-    private fun updateUi(hintText: String? = null) {
-        val value = currentValue
-        if (value == null) {
+    private fun updateUi() {
+        val last = lastValue?.let { products[it] }
+        if (last == null) {
             lastBarcode.text = "—"
             lastFormat.setText(R.string.waiting_for_barcode)
+            lastCount.text = "–"
         } else {
-            lastBarcode.text = value
-            val status = if (mode == Mode.REVIEW) R.string.status_counted else R.string.status_saved
-            lastFormat.text = getString(status, barcodeFormatName(currentFormat))
+            lastBarcode.text = last.value
+            val status = when {
+                last.manual -> R.string.status_adjusted
+                countingValue == last.value -> R.string.status_counting
+                else -> R.string.status_counted
+            }
+            lastFormat.text = getString(status, barcodeFormatName(last.format))
+            lastCount.text = last.count.toString()
         }
-        lastCount.text = if (mode == Mode.REVIEW) countValue.toString() else "–"
-        countButton.isEnabled = value != null
-        summary.text = getString(R.string.summary, results.size, results.values.sumOf { it.count })
-        hint.text = hintText ?: when {
-            mode != Mode.SCANNING -> hint.text
-            value == null -> getString(R.string.hint_scan_barcode)
-            else -> getString(R.string.hint_frame_row)
+
+        val thumb = last?.thumbnail
+        if (thumb !== shownThumbnail) {
+            shownThumbnail = thumb
+            thumbnailView.setImageBitmap(thumb)
+            thumbnailView.visibility = if (thumb == null) View.GONE else View.VISIBLE
         }
+
+        progress.visibility = if (busy) View.VISIBLE else View.INVISIBLE
+        minusButton.isEnabled = last != null
+        plusButton.isEnabled = last != null
+        val counted = products.values.filter { it.count > 0 }
+        summary.text = getString(R.string.summary, counted.size, counted.sumOf { it.count })
     }
 
     private fun feedback() {
@@ -470,21 +467,15 @@ class ScanActivity : AppCompatActivity() {
 
     private fun finishWithResults() {
         if (finishing) return
-        // A count on screen that was not saved yet is kept.
-        if (mode == Mode.REVIEW && countValue > 0) {
-            currentValue?.let { value ->
-                results.getOrPut(value) { Saved(currentFormat, 0) }.count += countValue
-            }
-        }
         finishing = true
-        val entries = results.entries.filter { it.value.count > 0 }
+        val items = products.values.filter { it.count > 0 }
         val intent = Intent(this, ResultActivity::class.java).apply {
-            putStringArrayListExtra(ResultActivity.EXTRA_VALUES, ArrayList(entries.map { it.key }))
+            putStringArrayListExtra(ResultActivity.EXTRA_VALUES, ArrayList(items.map { it.value }))
             putStringArrayListExtra(
                 ResultActivity.EXTRA_FORMATS,
-                ArrayList(entries.map { barcodeFormatName(it.value.format) })
+                ArrayList(items.map { barcodeFormatName(it.format) })
             )
-            putExtra(ResultActivity.EXTRA_COUNTS, entries.map { it.value.count }.toIntArray())
+            putExtra(ResultActivity.EXTRA_COUNTS, items.map { it.count }.toIntArray())
         }
         startActivity(intent)
         finish()
@@ -492,7 +483,6 @@ class ScanActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        countJob++
         cameraController?.clearImageAnalysisAnalyzer()
         scanner.close()
         objectDetector.close()
@@ -503,6 +493,9 @@ class ScanActivity : AppCompatActivity() {
 
     companion object {
         private const val CONFIRM_FRAMES = 3
-        private const val BARCODE_RECENT_MS = 1500L
+        private const val HIT_RESET_MS = 2000L
+        private const val RECOUNT_MS = 1500L
+        private const val MIN_GAP_MS = 300L
+        private const val THUMB_MAX_PX = 360
     }
 }

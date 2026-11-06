@@ -10,15 +10,6 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Still photo used for counting (same size as the preview) -->
-    <ImageView
-        android:id="@+id/frozenView"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:contentDescription="@null"
-        android:scaleType="fitXY"
-        android:visibility="gone" />
-
     <com.demo.shelfcounter.BarcodeOverlayView
         android:id="@+id/overlay"
         android:layout_width="match_parent"
@@ -30,89 +21,102 @@
         android:layout_height="match_parent"
         android:orientation="vertical">
 
-        <!-- Overlay: product barcode + count of identical items -->
+        <!-- Overlay: last item recognized + count of identical items -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_margin="16dp"
             android:background="@drawable/bg_panel"
-            android:orientation="vertical"
-            android:padding="16dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:letterSpacing="0.08"
-                android:text="@string/last_item_label"
-                android:textAllCaps="true"
-                android:textColor="@color/on_dark_muted"
-                android:textSize="12sp" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="14dp">
 
             <LinearLayout
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
+                android:layout_weight="1"
+                android:orientation="vertical">
 
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:id="@+id/lastBarcode"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:ellipsize="end"
-                        android:fontFamily="monospace"
-                        android:singleLine="true"
-                        android:text="—"
-                        android:textColor="@color/on_dark"
-                        android:textSize="22sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:id="@+id/lastFormat"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:text="@string/waiting_for_barcode"
-                        android:textColor="@color/on_dark_muted"
-                        android:textSize="13sp" />
-                </LinearLayout>
-
-                <LinearLayout
+                <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="12dp"
-                    android:gravity="center_horizontal"
-                    android:orientation="vertical">
+                    android:letterSpacing="0.08"
+                    android:text="@string/last_item_label"
+                    android:textAllCaps="true"
+                    android:textColor="@color/on_dark_muted"
+                    android:textSize="12sp" />
 
-                    <TextView
-                        android:id="@+id/lastCount"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:gravity="center"
-                        android:includeFontPadding="false"
-                        android:minWidth="56dp"
-                        android:text="–"
-                        android:textColor="@color/count_accent"
-                        android:textSize="46sp"
-                        android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/lastBarcode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:ellipsize="end"
+                    android:fontFamily="monospace"
+                    android:singleLine="true"
+                    android:text="—"
+                    android:textColor="@color/on_dark"
+                    android:textSize="19sp"
+                    android:textStyle="bold" />
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/identical_items"
-                        android:textColor="@color/on_dark_muted"
-                        android:textSize="11sp" />
-                </LinearLayout>
+                <TextView
+                    android:id="@+id/lastFormat"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="@string/waiting_for_barcode"
+                    android:textColor="@color/on_dark_muted"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <!-- The frame that was counted, with numbered items -->
+            <ImageView
+                android:id="@+id/thumbnail"
+                android:layout_width="62dp"
+                android:layout_height="110dp"
+                android:layout_marginStart="8dp"
+                android:contentDescription="@null"
+                android:scaleType="fitCenter"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:gravity="center_horizontal"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/lastCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:minWidth="56dp"
+                    android:text="–"
+                    android:textColor="@color/count_accent"
+                    android:textSize="46sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/identical_items"
+                    android:textColor="@color/on_dark_muted"
+                    android:textSize="11sp" />
+
+                <ProgressBar
+                    android:id="@+id/progress"
+                    style="?android:attr/progressBarStyleSmall"
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:layout_marginTop="4dp"
+                    android:indeterminateTint="@color/count_accent"
+                    android:visibility="invisible" />
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Centre: instructions / progress (lets touches through to the overlay) -->
+        <!-- Centre: instructions (touches pass through to the camera for tap-to-focus) -->
         <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
@@ -129,17 +133,9 @@
                 android:background="@drawable/bg_panel"
                 android:gravity="center"
                 android:padding="12dp"
-                android:text="@string/hint_scan_barcode"
+                android:text="@string/hint_walk"
                 android:textColor="@color/on_dark"
                 android:textSize="15sp" />
-
-            <ProgressBar
-                android:id="@+id/progress"
-                android:layout_width="64dp"
-                android:layout_height="64dp"
-                android:layout_gravity="center"
-                android:indeterminateTint="@color/count_accent"
-                android:visibility="gone" />
         </FrameLayout>
 
         <!-- Bottom controls -->
@@ -159,133 +155,82 @@
                 android:textColor="@color/on_dark"
                 android:textSize="15sp" />
 
-            <!-- Live camera controls -->
             <LinearLayout
-                android:id="@+id/liveControls"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:orientation="horizontal">
-
-                    <Button
-                        android:id="@+id/torchButton"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="@string/light_on"
-                        android:textColor="@color/on_dark"
-                        app:strokeColor="@color/on_dark_muted" />
-
-                    <Button
-                        android:id="@+id/resetButton"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="10dp"
-                        android:layout_weight="1"
-                        android:text="@string/reset"
-                        android:textColor="@color/on_dark"
-                        app:strokeColor="@color/on_dark_muted" />
-                </LinearLayout>
+                android:layout_marginTop="10dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
                 <Button
-                    android:id="@+id/countButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="60dp"
-                    android:layout_marginTop="6dp"
+                    android:id="@+id/minusButton"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
                     android:enabled="false"
-                    android:text="@string/count_items"
-                    android:textSize="17sp" />
+                    android:text="@string/minus"
+                    android:textColor="@color/on_dark"
+                    android:textSize="20sp"
+                    app:strokeColor="@color/on_dark_muted" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1.3"
+                    android:gravity="center"
+                    android:text="@string/adjust_last"
+                    android:textColor="@color/on_dark_muted"
+                    android:textSize="13sp" />
+
+                <Button
+                    android:id="@+id/plusButton"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:enabled="false"
+                    android:text="@string/plus"
+                    android:textColor="@color/on_dark"
+                    android:textSize="20sp"
+                    app:strokeColor="@color/on_dark_muted" />
             </LinearLayout>
 
-            <!-- Review controls (after a count) -->
             <LinearLayout
-                android:id="@+id/reviewControls"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:visibility="gone">
+                android:layout_marginTop="6dp"
+                android:orientation="horizontal">
 
-                <LinearLayout
-                    android:layout_width="match_parent"
+                <Button
+                    android:id="@+id/torchButton"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
+                    android:layout_weight="1"
+                    android:text="@string/light_on"
+                    android:textColor="@color/on_dark"
+                    app:strokeColor="@color/on_dark_muted" />
 
-                    <Button
-                        android:id="@+id/minusButton"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="@string/minus"
-                        android:textColor="@color/on_dark"
-                        android:textSize="20sp"
-                        app:strokeColor="@color/on_dark_muted" />
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1.4"
-                        android:gravity="center"
-                        android:text="@string/adjust_count"
-                        android:textColor="@color/on_dark_muted"
-                        android:textSize="13sp" />
-
-                    <Button
-                        android:id="@+id/plusButton"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="@string/plus"
-                        android:textColor="@color/on_dark"
-                        android:textSize="20sp"
-                        app:strokeColor="@color/on_dark_muted" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
+                <Button
+                    android:id="@+id/resetButton"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:orientation="horizontal">
-
-                    <Button
-                        android:id="@+id/retakeButton"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
-                        android:layout_width="0dp"
-                        android:layout_height="60dp"
-                        android:layout_weight="1"
-                        android:text="@string/retake"
-                        android:textColor="@color/on_dark"
-                        app:strokeColor="@color/on_dark_muted" />
-
-                    <Button
-                        android:id="@+id/saveButton"
-                        android:layout_width="0dp"
-                        android:layout_height="60dp"
-                        android:layout_marginStart="10dp"
-                        android:layout_weight="1"
-                        android:text="@string/save_count"
-                        android:textSize="16sp" />
-                </LinearLayout>
+                    android:layout_marginStart="10dp"
+                    android:layout_weight="1"
+                    android:text="@string/reset"
+                    android:textColor="@color/on_dark"
+                    app:strokeColor="@color/on_dark_muted" />
             </LinearLayout>
 
             <Button
                 android:id="@+id/closeButton"
-                style="@style/Widget.Material3.Button.TextButton"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
+                android:layout_height="60dp"
+                android:layout_marginTop="6dp"
                 android:text="@string/close_camera"
-                android:textColor="@color/on_dark" />
+                android:textSize="17sp" />
         </LinearLayout>
     </LinearLayout>
 
