@@ -33,7 +33,7 @@ Everything runs on the device (bundled ML Kit models + OpenCV), so no internet i
 
 ## How counting works
 
-`ShapeCounter.kt` extracts SIFT keypoints (OpenCV) from the frozen photo. Keypoints inside
+`ShapeCounter.kt` extracts SIFT keypoints (OpenCV) from the counted frame. Keypoints inside
 the first item's box are the model; every other keypoint is matched to it, and RANSAC groups
 the matches into similarity transforms (shift + scale + rotation). Each group with enough
 matches is one more copy of the product. Items further back can be smaller and partly
@@ -41,7 +41,7 @@ hidden. Tips for a good count:
 
 - shoot the row **at an angle**, not straight on: an item completely hidden behind the
   first one cannot be counted;
-- keep the image **sharp** (tap to focus before Count items, use the light if dim);
+- keep the image **sharp** (slow down on each row, tap to focus, use the light if dim);
 - products with printed labels work best; plain, featureless boxes give few keypoints.
 
 ## Get the APK
@@ -84,7 +84,7 @@ Source layout (`app/src/main/java/com/demo/shelfcounter/`):
 | File | Role |
 |---|---|
 | `WelcomeActivity.kt` | welcome page, camera permission |
-| `ScanActivity.kt` | camera, barcode reading, count flow, overlay panel |
+| `ScanActivity.kt` | camera, barcode reading, continuous count loop, overlay panel |
 | `ShapeCounter.kt` | counts identical items by shape (OpenCV SIFT + RANSAC) |
 | `BarcodeOverlayView.kt` | barcode frames, numbered item boxes, box drawing |
 | `ResultActivity.kt` | final list and sharing |
