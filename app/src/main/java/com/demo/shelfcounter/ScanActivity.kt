@@ -1,6 +1,7 @@
 package com.demo.shelfcounter
 
 import android.Manifest
+import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -14,7 +15,9 @@ import android.media.AudioManager
 import android.media.ToneGenerator
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.SystemClock
+import android.provider.MediaStore
 import android.util.Size
 import android.view.HapticFeedbackConstants
 import android.view.View
@@ -62,8 +65,13 @@ import kotlin.math.roundToInt
  *    the first item of the row) and counts the identical items behind it ([ShapeCounter]).
  *  - A product keeps the highest count seen, so a better angle can only improve it.
  *  - −/+ fix the last product by hand (automatic counting then stops for it).
+ *  - Tapping the thumbnail opens REVIEW: the best counted frame, frozen. Dragging a box
+ *    around the first item recounts it; "Save frame" stores the picture for analysis.
  */
 class ScanActivity : AppCompatActivity() {
+
+    /** Best counted frame of the last product (kept for review / saving). */
+    private class Frame(val value: String, val bitmap: Bitmap, var result: ShapeCounter.Result, val barcode: RectF)
 
     private class Product(val value: String, val format: Int) {
         var count = 1
@@ -83,6 +91,10 @@ class ScanActivity : AppCompatActivity() {
     private lateinit var torchButton: Button
     private lateinit var minusButton: Button
     private lateinit var plusButton: Button
+    private lateinit var frozenView: ImageView
+    private lateinit var hint: TextView
+    private lateinit var liveRow: View
+    private lateinit var reviewRow: View
 
     private lateinit var scanner: BarcodeScanner
     private lateinit var objectDetector: ObjectDetector
@@ -102,6 +114,8 @@ class ScanActivity : AppCompatActivity() {
     private var busy = false
     private var countingValue: String? = null
     private var lastJobEndedAt = 0L
+    private var bestFrame: Frame? = null
+    private var reviewing = false
     private val clearItems = Runnable { overlay.setItems(null, emptyList()) }
 
     private val cameraPermission =
@@ -134,6 +148,10 @@ class ScanActivity : AppCompatActivity() {
         torchButton = findViewById(R.id.torchButton)
         minusButton = findViewById(R.id.minusButton)
         plusButton = findViewById(R.id.plusButton)
+        frozenView = findViewById(R.id.frozenView)
+        hint = findViewById(R.id.hint)
+        liveRow = findViewById(R.id.liveRow)
+        reviewRow = findViewById(R.id.reviewRow)
         findViewById<View>(R.id.uiLayer).applySystemBarInsets()
 
         openCvReady = try {
@@ -177,7 +195,13 @@ class ScanActivity : AppCompatActivity() {
         minusButton.setOnClickListener { adjustLast(-1) }
         plusButton.setOnClickListener { adjustLast(+1) }
         torchButton.setOnClickListener { toggleTorch() }
-        onBackPressedDispatcher.addCallback(this) { finishWithResults() }
+        thumbnailView.setOnClickListener { openReview() }
+        findViewById<Button>(R.id.doneButton).setOnClickListener { closeReview() }
+        findViewById<Button>(R.id.saveFrameButton).setOnClickListener { saveFrame() }
+        overlay.onBoxDrawn = { viewBox -> recountWithBox(viewBox) }
+        onBackPressedDispatcher.addCallback(this) {
+            if (reviewing) closeReview() else finishWithResults()
+        }
 
         updateUi()
 
@@ -223,7 +247,7 @@ class ScanActivity : AppCompatActivity() {
     }
 
     private fun onBarcodes(barcodes: List<Barcode>) {
-        if (finishing) return
+        if (finishing || reviewing) return
         val now = SystemClock.elapsedRealtime()
 
         val valid = barcodes.filter { !it.rawValue.isNullOrBlank() && it.boundingBox != null }
@@ -279,32 +303,37 @@ class ScanActivity : AppCompatActivity() {
         objectDetector.process(InputImage.fromBitmap(bitmap, 0))
             .addOnSuccessListener { objects ->
                 if (finishing || isDestroyed) return@addOnSuccessListener
-                val first = pickFirstItem(objects.map { RectF(it.boundingBox) }, barcode, bitmap.width, bitmap.height)
-                countInBackground(product, bitmap, first)
+                val candidates = firstItemCandidates(
+                    objects.map { RectF(it.boundingBox) }, barcode, bitmap.width, bitmap.height
+                )
+                countInBackground(product, bitmap, candidates, barcode)
             }
             .addOnFailureListener {
                 if (finishing || isDestroyed) return@addOnFailureListener
-                // No object detection: estimate the first item from the barcode.
-                countInBackground(product, bitmap, pickFirstItem(emptyList(), barcode, bitmap.width, bitmap.height))
+                val candidates = firstItemCandidates(emptyList(), barcode, bitmap.width, bitmap.height)
+                countInBackground(product, bitmap, candidates, barcode)
             }
     }
 
-    private fun countInBackground(product: Product, bitmap: Bitmap, first: RectF) {
+    private fun countInBackground(product: Product, bitmap: Bitmap, candidates: List<RectF>, barcode: RectF) {
         worker.execute {
             var result: ShapeCounter.Result? = null
             var thumb: Bitmap? = null
             try {
-                val r = ShapeCounter.count(bitmap, first)
+                val r = ShapeCounter.countBest(bitmap, candidates)
                 result = r
                 thumb = renderThumbnail(bitmap, r)
             } catch (t: Throwable) {
                 // Count failed on this frame; the next frame will try again.
             }
-            runOnUiThread { finishCount(product, bitmap, result, thumb) }
+            runOnUiThread { finishCount(product, bitmap, barcode, result, thumb) }
         }
     }
 
-    private fun finishCount(product: Product, bitmap: Bitmap, result: ShapeCounter.Result?, thumb: Bitmap?) {
+    private fun finishCount(
+        product: Product, bitmap: Bitmap, barcode: RectF,
+        result: ShapeCounter.Result?, thumb: Bitmap?
+    ) {
         busy = false
         countingValue = null
         lastJobEndedAt = SystemClock.elapsedRealtime()
@@ -312,7 +341,7 @@ class ScanActivity : AppCompatActivity() {
         product.lastCountedAt = lastJobEndedAt
 
         // Show the counted items on the live image for a moment.
-        if (result != null && overlay.width > 0) {
+        if (result != null && overlay.width > 0 && !reviewing) {
             val sx = overlay.width.toFloat() / bitmap.width
             val sy = overlay.height.toFloat() / bitmap.height
             fun toView(r: RectF) = RectF(r.left * sx, r.top * sy, r.right * sx, r.bottom * sy)
@@ -328,27 +357,34 @@ class ScanActivity : AppCompatActivity() {
                 feedback()
                 pulse(lastCount)
             }
-            if (result.count >= product.count && thumb != null) product.thumbnail = thumb
+            if (result.count >= product.count && thumb != null) {
+                product.thumbnail = thumb
+                bestFrame = Frame(product.value, bitmap, result, barcode)
+            }
         }
         updateUi()
     }
 
     /**
-     * The first item of the row: the detected object closest to the barcode (the smallest
-     * one if several contain it). Objects not much bigger than the barcode itself (e.g. the
-     * barcode sticker) are ignored. Without a usable object, the item is estimated from the
-     * barcode: a product above it, about 3 barcodes wide and 7.5 tall.
+     * Possible boxes for the first item of the row; [ShapeCounter.countBest] keeps the one
+     * that finds the most copies. They are:
+     *  - up to 2 ML Kit objects next to the barcode, clearly bigger than the barcode itself
+     *    (the barcode sticker alone is not an item);
+     *  - 3 boxes estimated from the barcode, for a product standing just above it
+     *    (2.5, 3.5 and 5 barcodes wide, 2.6 times as tall as wide).
      */
-    private fun pickFirstItem(boxes: List<RectF>, barcode: RectF, w: Int, h: Int): RectF {
+    private fun firstItemCandidates(boxes: List<RectF>, barcode: RectF, w: Int, h: Int): List<RectF> {
         val imageArea = w.toFloat() * h
         val minArea = max(imageArea * 0.01f, barcode.width() * barcode.height() * 4f)
         val cx = barcode.centerX()
         val cy = barcode.centerY()
         val bw = max(barcode.width(), barcode.height())
-        val best = boxes
+        val out = ArrayList<RectF>()
+
+        boxes
             .filter {
                 val area = it.width() * it.height()
-                area > minArea && area < imageArea * 0.8f && it.width() > bw * 1.3f
+                area > minArea && area < imageArea * 0.6f && it.width() > bw * 1.3f
             }
             .map { box ->
                 val dx = max(0f, max(box.left - cx, cx - box.right))
@@ -356,15 +392,20 @@ class ScanActivity : AppCompatActivity() {
                 box to hypot(dx, dy)
             }
             .filter { (_, d) -> d < bw * 2f }
-            .minWithOrNull(compareBy<Pair<RectF, Float>>({ it.second }, { it.first.width() * it.first.height() }))
-            ?.first
-        if (best != null) return best
+            .sortedWith(compareBy<Pair<RectF, Float>>({ it.second }, { it.first.width() * it.first.height() }))
+            .take(2)
+            .forEach { out.add(it.first) }
 
         val bottom = min(h.toFloat(), barcode.bottom + barcode.height() * 0.3f)
-        return RectF(
-            max(0f, cx - 1.5f * bw), max(0f, bottom - 7.5f * bw),
-            min(w.toFloat(), cx + 1.5f * bw), bottom
-        )
+        for (k in floatArrayOf(2.5f, 3.5f, 5f)) {
+            val bw2 = k * bw / 2f
+            val box = RectF(
+                max(0f, cx - bw2), max(0f, bottom - 2.6f * k * bw),
+                min(w.toFloat(), cx + bw2), bottom
+            )
+            if (box.width() > 8f && box.height() > 8f) out.add(box)
+        }
+        return out
     }
 
     /** A small picture of the counted area, with the items numbered (1 = first item). */
@@ -417,6 +458,147 @@ class ScanActivity : AppCompatActivity() {
         return out
     }
 
+    // ---------------------------------------------------------------- review
+
+    private fun openReview() {
+        val frame = bestFrame
+        val product = lastValue?.let { products[it] }
+        if (frame == null || product == null || frame.value != product.value) return
+        reviewing = true
+        overlay.removeCallbacks(clearItems)
+        overlay.setBoxes(emptyList())
+        frozenView.setImageBitmap(frame.bitmap)
+        frozenView.visibility = View.VISIBLE
+        showFrameItems(frame)
+        overlay.drawingEnabled = true
+        liveRow.visibility = View.GONE
+        reviewRow.visibility = View.VISIBLE
+        hint.setText(R.string.hint_review)
+        updateUi()
+    }
+
+    private fun closeReview() {
+        reviewing = false
+        overlay.drawingEnabled = false
+        overlay.clearAll()
+        frozenView.setImageDrawable(null)
+        frozenView.visibility = View.GONE
+        liveRow.visibility = View.VISIBLE
+        reviewRow.visibility = View.GONE
+        hint.setText(R.string.hint_walk)
+        updateUi()
+    }
+
+    private fun showFrameItems(frame: Frame) {
+        if (overlay.width == 0) return
+        val sx = overlay.width.toFloat() / frame.bitmap.width
+        val sy = overlay.height.toFloat() / frame.bitmap.height
+        fun toView(r: RectF) = RectF(r.left * sx, r.top * sy, r.right * sx, r.bottom * sy)
+        overlay.setItems(toView(frame.result.reference), frame.result.others.map { toView(it) })
+    }
+
+    /** The user drew the first item on the frozen frame: count again with that box. */
+    private fun recountWithBox(viewBox: RectF) {
+        val frame = bestFrame ?: return
+        if (!reviewing || busy) return
+        val product = products[frame.value] ?: return
+        val sx = frame.bitmap.width.toFloat() / overlay.width
+        val sy = frame.bitmap.height.toFloat() / overlay.height
+        val box = RectF(viewBox.left * sx, viewBox.top * sy, viewBox.right * sx, viewBox.bottom * sy)
+        busy = true
+        updateUi()
+        worker.execute {
+            val result = try {
+                ShapeCounter.count(frame.bitmap, box)
+            } catch (t: Throwable) {
+                ShapeCounter.Result(RectF(box), emptyList(), 0)
+            }
+            val thumb = try {
+                renderThumbnail(frame.bitmap, result)
+            } catch (t: Throwable) {
+                null
+            }
+            runOnUiThread {
+                busy = false
+                lastJobEndedAt = SystemClock.elapsedRealtime()
+                if (finishing || isDestroyed) return@runOnUiThread
+                frame.result = result
+                product.count = result.count
+                product.manual = true
+                if (thumb != null) product.thumbnail = thumb
+                if (reviewing) showFrameItems(frame)
+                feedback()
+                pulse(lastCount)
+                updateUi()
+            }
+        }
+    }
+
+    /** Saves the frozen frame (clean + annotated) to Pictures/ShelfCounter for analysis. */
+    private fun saveFrame() {
+        val frame = bestFrame ?: return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            Toast.makeText(this, R.string.save_unsupported, Toast.LENGTH_LONG).show()
+            return
+        }
+        val stamp = System.currentTimeMillis()
+        val base = "shelfcounter_${frame.value}_$stamp"
+        val result = frame.result
+        worker.execute {
+            val ok = try {
+                writeJpeg("${base}_clean.jpg", frame.bitmap)
+                writeJpeg("${base}_boxes.jpg", annotate(frame.bitmap, result, frame.barcode))
+                true
+            } catch (t: Throwable) {
+                false
+            }
+            runOnUiThread {
+                Toast.makeText(
+                    this,
+                    if (ok) getString(R.string.frame_saved) else getString(R.string.frame_not_saved),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
+    private fun writeJpeg(name: String, bitmap: Bitmap) {
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, name)
+            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/ShelfCounter")
+        }
+        val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            ?: throw IllegalStateException("no uri")
+        contentResolver.openOutputStream(uri)?.use { out ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 92, out)
+        } ?: throw IllegalStateException("no stream")
+    }
+
+    private fun annotate(bitmap: Bitmap, result: ShapeCounter.Result, barcode: RectF): Bitmap {
+        val out = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(out)
+        val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = max(3f, out.width / 200f)
+        }
+        val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = Typeface.DEFAULT_BOLD
+            textSize = max(24f, out.width / 25f)
+        }
+        stroke.color = 0xFFFF00FF.toInt()
+        canvas.drawRect(barcode, stroke)
+        (listOf(result.reference) + result.others).forEachIndexed { i, r ->
+            val color = if (i == 0) 0xFF4ADE80.toInt() else 0xFF38BDF8.toInt()
+            stroke.color = color
+            text.color = color
+            canvas.drawRect(r, stroke)
+            canvas.drawText((i + 1).toString(), r.left + 8f, r.top + text.textSize, text)
+        }
+        return out
+    }
+
     // ---------------------------------------------------------------- manual fixes
 
     private fun adjustLast(delta: Int) {
@@ -428,6 +610,7 @@ class ScanActivity : AppCompatActivity() {
     }
 
     private fun resetAll() {
+        bestFrame = null
         products.clear()
         frameHits.clear()
         lastSeen.clear()

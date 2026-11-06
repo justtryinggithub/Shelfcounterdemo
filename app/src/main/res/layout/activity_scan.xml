@@ -10,6 +10,15 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <!-- Frozen frame shown while reviewing a count -->
+    <ImageView
+        android:id="@+id/frozenView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@null"
+        android:scaleType="fitXY"
+        android:visibility="gone" />
+
     <com.demo.shelfcounter.BarcodeOverlayView
         android:id="@+id/overlay"
         android:layout_width="match_parent"
@@ -69,9 +78,12 @@
                     android:textSize="13sp" />
             </LinearLayout>
 
-            <!-- The frame that was counted, with numbered items -->
+            <!-- The frame that was counted, with numbered items (tap = review) -->
             <ImageView
                 android:id="@+id/thumbnail"
+                android:clickable="true"
+                android:focusable="true"
+                android:foreground="?attr/selectableItemBackground"
                 android:layout_width="62dp"
                 android:layout_height="110dp"
                 android:layout_marginStart="8dp"
@@ -197,6 +209,7 @@
             </LinearLayout>
 
             <LinearLayout
+                android:id="@+id/liveRow"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
@@ -222,6 +235,33 @@
                     android:text="@string/reset"
                     android:textColor="@color/on_dark"
                     app:strokeColor="@color/on_dark_muted" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/reviewRow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:orientation="horizontal"
+                android:visibility="gone">
+
+                <Button
+                    android:id="@+id/saveFrameButton"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/save_frame"
+                    android:textColor="@color/on_dark"
+                    app:strokeColor="@color/on_dark_muted" />
+
+                <Button
+                    android:id="@+id/doneButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:layout_weight="1"
+                    android:text="@string/done" />
             </LinearLayout>
 
             <Button

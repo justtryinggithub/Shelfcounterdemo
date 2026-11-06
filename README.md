@@ -11,14 +11,15 @@ any Android 8.0+ phone.
    the phone for about a second so the **barcode** (on the first item or on the shelf label)
    and the **products behind it** are in view, at an angle:
    - after 2 consistent reads the barcode becomes a product in the list (beep + vibration);
-   - the app grabs a frame, takes the item closest to the barcode as the **first item**
-     (ML Kit object detection) and counts the **identical items** by shape;
+   - the app grabs a frame, finds the **first item** next to the barcode and counts the
+     **identical items** behind it;
    - the top panel shows the **last item recognized**, its **count** and a small picture of
      the counted frame with the items numbered (1 = first item);
    - while the barcode stays in view it recounts about every second and keeps the
      **highest** count, so a better angle can only improve it;
    - **− / +** fix the last product by hand (automatic counting then stops for it);
-     **Reset** clears everything; flashlight, pinch-to-zoom and tap-to-focus are available.
+     **Reset** clears everything; flashlight, pinch-to-zoom and tap-to-focus are available;
+   - tap the small picture to **review** the count on a frozen frame (see below).
 3. **Close camera** (or the back gesture) opens the result list, one line per product:
 
    ```
@@ -33,23 +34,23 @@ Everything runs on the device (bundled ML Kit models + OpenCV), so no internet i
 
 ## How counting works
 
-`ShapeCounter.kt` runs two methods on the counted frame and keeps the higher count:
+`ShapeCounter.kt` extracts SIFT keypoints (OpenCV) from the counted frame once. For a box
+around the first item, keypoints inside it are the model; every other keypoint is matched
+to it and RANSAC groups the matches into similarity transforms (shift + scale + rotation).
+Each group with enough matches is one more copy; items further back can be smaller and
+partly hidden.
 
-- **Same label** – SIFT keypoints (OpenCV) inside the first item's box are the model; every
-  other keypoint is matched to it and RANSAC groups the matches into similarity transforms
-  (shift + scale + rotation). Each group with enough matches is one more copy.
-- **Same shape** – the top of the first item (cap and neck) is searched at smaller scales
-  (colour + edge correlation, mean-colour check) and a chain is followed from the first
-  item: each next item is a bit smaller, close to the previous one, in a consistent
-  direction. This counts same-shaped containers even when the labels differ.
+The first-item box matters most: a box covering several items finds only 1. So several
+candidate boxes are tried and the one finding most copies wins: up to 2 ML Kit objects next
+to the barcode (bigger than the barcode itself) and 3 boxes estimated from the barcode
+position (a product standing just above it, 2.5 / 3.5 / 5 barcodes wide).
 
-The first item is the ML Kit object closest to the barcode that is clearly bigger than the
-barcode; if none is found it is estimated from the barcode position. After each count the
-numbered boxes are drawn on the live image for 2.5 s. Tips for a good count:
+**Review:** tap the small picture to freeze the best counted frame. Drag a box around the
+first item to count again with that box, fix with − / +, or **Save frame**: a clean and an
+annotated JPEG go to *Pictures/ShelfCounter* (useful to tune the algorithm on real shelves).
 
-- shoot the row **at an angle**, not straight on, so each cap is visible;
-- keep the first item **whole and in focus** (not too close), use the light if dim;
-- slow down on each row: about one second per row is enough.
+Tips: shoot the row at an angle so every item is at least partly visible, keep the first
+item whole and in focus, pause about a second on each row.
 
 ## Get the APK
 
@@ -92,6 +93,6 @@ Source layout (`app/src/main/java/com/demo/shelfcounter/`):
 |---|---|
 | `WelcomeActivity.kt` | welcome page, camera permission |
 | `ScanActivity.kt` | camera, barcode reading, continuous count loop, overlay panel |
-| `ShapeCounter.kt` | counts identical items: same label (SIFT + RANSAC) and same shape (cap template chain) |
+| `ShapeCounter.kt` | counts identical items (SIFT + RANSAC), best of several first-item boxes |
 | `BarcodeOverlayView.kt` | barcode frames, numbered item boxes, box drawing |
 | `ResultActivity.kt` | final list and sharing |

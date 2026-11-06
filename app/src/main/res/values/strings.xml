@@ -43,9 +43,15 @@
     <string name="status_counting">%1$s · counting…</string>
     <string name="status_counted">%1$s · counted</string>
     <string name="status_adjusted">%1$s · adjusted by hand</string>
-    <string name="hint_walk">Walk along the shelf. For each row keep its barcode and the products behind it in view for a second: counting is automatic.</string>
+    <string name="hint_walk">Walk along the shelf. For each row keep its barcode and the products behind it in view for a second: counting is automatic. Tap the small picture to check or fix a count.</string>
     <string name="minus">−</string>
     <string name="plus">+</string>
     <string name="adjust_last">fix last count</string>
+    <string name="hint_review">Frozen frame of the last count. Wrong first item? Drag a box around it to count again, or fix with − / +. Save frame keeps the picture for analysis.</string>
+    <string name="save_frame">Save frame</string>
+    <string name="done">Back to camera</string>
+    <string name="frame_saved">Frame saved in Pictures/ShelfCounter</string>
+    <string name="frame_not_saved">Could not save the frame</string>
+    <string name="save_unsupported">Saving frames needs Android 10 or newer</string>
     <string name="opencv_failed">Image analysis library failed to load</string>
 </resources>
