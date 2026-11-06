@@ -4,11 +4,11 @@
 
     <!-- Welcome -->
     <string name="welcome_title">Shelf Counter</string>
-    <string name="welcome_subtitle">Demo · barcode-based product counting</string>
-    <string name="welcome_body">Point the camera at a row of products. The app reads the 1D barcodes and counts how many identical items are lined up.</string>
-    <string name="step_1">1. Tap Start counting and aim at the shelf</string>
-    <string name="step_2">2. Keep the whole row in the frame for a moment</string>
-    <string name="step_3">3. Tap Close camera to see the list</string>
+    <string name="welcome_subtitle">Demo · barcode + shape-based product counting</string>
+    <string name="welcome_body">Read the barcode of a product (on the item or on the shelf label), then photograph its row: the app recognises the first item and counts the identical ones lined up behind it.</string>
+    <string name="step_1">1. Scan the barcode of the first item in the row</string>
+    <string name="step_2">2. Frame the row at an angle and tap Count items</string>
+    <string name="step_3">3. Save each count, then tap Close camera to see the list</string>
     <string name="start_counting">Start counting</string>
     <string name="supported_codes">EAN-13 · EAN-8 · UPC-A/E · Code 128/39/93 · ITF · Codabar · works offline</string>
 
@@ -19,12 +19,11 @@
     <string name="permission_denied">Camera permission is required to count products.</string>
 
     <!-- Scan -->
-    <string name="last_item_label">Last item recognized</string>
+    <string name="last_item_label">Product barcode</string>
     <string name="waiting_for_barcode">Waiting for a barcode…</string>
     <string name="format_line">%1$s</string>
     <string name="identical_items">identical items</string>
-    <string name="scan_hint">Point the camera at the barcodes of a row of products</string>
-    <string name="summary">Products: %1$d · Items: %2$d</string>
+        <string name="summary">Saved: %1$d products · %2$d items</string>
     <string name="light_on">Light on</string>
     <string name="light_off">Light off</string>
     <string name="no_flash">This camera has no flashlight</string>
@@ -40,4 +39,24 @@
     <string name="share_title">Share count results</string>
     <string name="home">Home</string>
     <string name="new_count">New count</string>
+    <!-- Shape counting -->
+    <string name="status_reading">Reading barcode…</string>
+    <string name="status_saved">%1$s · saved</string>
+    <string name="status_counted">%1$s · counted</string>
+    <string name="hint_scan_barcode">Point the camera at the barcode of the first item in the row (on the product or on the shelf label).</string>
+    <string name="hint_frame_row">Barcode saved. Now frame the whole row from an angle, so every item is at least partly visible, and tap Count items.</string>
+    <string name="hint_finding">Looking for the first item…</string>
+    <string name="hint_counting">Counting identical items…</string>
+    <string name="hint_result">Found %1$d identical items. Wrong? Drag a box around the first item to count again, or adjust with − / +.</string>
+    <string name="hint_draw_box">Could not find the first item automatically. Drag a box around the first item of the row.</string>
+    <string name="count_items">Count items</string>
+    <string name="retake">Retake</string>
+    <string name="save_count">Save count</string>
+    <string name="minus">−</string>
+    <string name="plus">+</string>
+    <string name="adjust_count">adjust count</string>
+    <string name="scan_barcode_first">Scan a barcode first</string>
+    <string name="no_image">Could not grab the camera image, try again</string>
+    <string name="opencv_failed">Image analysis library failed to load</string>
+    <string name="saved_toast">Saved: %1$s × %2$d</string>
 </resources>

@@ -7,31 +7,40 @@ any Android 8.0+ phone.
 ## What it does
 
 1. **Welcome page** with a **Start counting** button (asks for camera permission).
-2. **Camera screen** with a live overlay:
-   - green frame on every barcode that has been counted, amber while it is being confirmed;
-   - top panel: **last item recognized** (barcode number and type) and its **count of identical items**;
-   - a beep and a short vibration each time a new product appears or a count goes up;
-   - flashlight, Reset, pinch-to-zoom and tap-to-focus.
-3. **Close camera** (or the back gesture) opens the result list, one line per product:
+2. **Camera screen**, step 1 – **read the barcode** of the first item of a row
+   (on the product or on the shelf-edge label). After 3 consistent reads it is saved:
+   green frame, beep, number shown in the top panel.
+3. Step 2 – frame the **whole row from an angle** (so every item behind the first one is
+   at least partly visible) and tap **Count items**. The image is frozen and:
+   - the item closest to the barcode is taken as the **first item** (ML Kit object detection);
+   - identical items are found by **shape** and numbered on the photo (1 = first item);
+   - the top panel shows the barcode and the **count of identical items**.
+   If the first item is wrong or not found, **drag a box around it** to count again;
+   **− / +** fix the count by hand. **Save count** adds it to the list, **Retake** goes back.
+4. **Close camera** (or the back gesture) opens the result list, one line per product:
 
    ```
    8001234567890   number of objects = 6
    ```
 
-   The list can be shared (WhatsApp, email, etc.) as plain text.
+   The list can be shared (WhatsApp, email, etc.) as plain text. Saving the same barcode
+   twice adds the counts together.
 
 Supported codes: EAN-13, EAN-8, UPC-A, UPC-E, Code 128, Code 39, Code 93, ITF, Codabar.
-Recognition runs fully on the device (ML Kit bundled model), so no internet is needed.
+Everything runs on the device (bundled ML Kit models + OpenCV), so no internet is needed.
 
 ## How counting works
 
-Each camera frame reports every barcode in view. If the same number appears N times in one
-frame, N identical items are side by side. A product's count is the highest N seen in at
-least 3 frames, which filters out misreads. So:
+`ShapeCounter.kt` extracts SIFT keypoints (OpenCV) from the frozen photo. Keypoints inside
+the first item's box are the model; every other keypoint is matched to it, and RANSAC groups
+the matches into similarity transforms (shift + scale + rotation). Each group with enough
+matches is one more copy of the product. Items further back can be smaller and partly
+hidden. Tips for a good count:
 
-- keep the **whole row in the frame** for about a second; every item's barcode must face the camera;
-- counts only go up during a session; use **Reset** to start over;
-- rows longer than one camera frame should be counted in parts (count, Close camera, New count).
+- shoot the row **at an angle**, not straight on: an item completely hidden behind the
+  first one cannot be counted;
+- keep the image **sharp** (tap to focus before Count items, use the light if dim);
+- products with printed labels work best; plain, featureless boxes give few keypoints.
 
 ## Get the APK
 
@@ -64,6 +73,7 @@ Command line equivalent: `./gradlew assembleDebug` (needs the Android SDK and JD
 ## Project facts
 
 - Kotlin, Views, Material 3; CameraX 1.4.1 + `camera-mlkit-vision`; ML Kit barcode-scanning 17.3.0
+  and object-detection 17.0.2; OpenCV 4.10.0 (SIFT); APK built for arm64-v8a and armeabi-v7a
 - `minSdk 26`, `targetSdk 35`, edge-to-edge handled for Android 15
 - Package name: `com.demo.shelfcounter`; debug-signed (demo use only, not for the Play Store)
 
@@ -72,7 +82,7 @@ Source layout (`app/src/main/java/com/demo/shelfcounter/`):
 | File | Role |
 |---|---|
 | `WelcomeActivity.kt` | welcome page, camera permission |
-| `ScanActivity.kt` | camera, barcode detection, overlay panel |
-| `ShelfCounter.kt` | counting logic (no Android dependencies) |
-| `BarcodeOverlayView.kt` | frames drawn on top of the camera image |
+| `ScanActivity.kt` | camera, barcode reading, count flow, overlay panel |
+| `ShapeCounter.kt` | counts identical items by shape (OpenCV SIFT + RANSAC) |
+| `BarcodeOverlayView.kt` | barcode frames, numbered item boxes, box drawing |
 | `ResultActivity.kt` | final list and sharing |

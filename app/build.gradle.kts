@@ -11,8 +11,13 @@ android {
         applicationId = "com.demo.shelfcounter"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "2.0"
+
+        // Samsung A56 and nearly all current phones are 64-bit ARM; keeps the APK small.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     buildTypes {
@@ -48,4 +53,10 @@ dependencies {
 
     // ML Kit barcode scanning, bundled model: works offline, no Play Services download
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
+
+    // ML Kit object detection, bundled model: finds the first item of the row
+    implementation("com.google.mlkit:object-detection:17.0.2")
+
+    // OpenCV (SIFT keypoints) for counting identical items by shape
+    implementation("org.opencv:opencv:4.10.0")
 }
