@@ -102,6 +102,7 @@ class ScanActivity : AppCompatActivity() {
     private var busy = false
     private var countingValue: String? = null
     private var lastJobEndedAt = 0L
+    private val clearItems = Runnable { overlay.setItems(null, emptyList()) }
 
     private val cameraPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -279,34 +280,46 @@ class ScanActivity : AppCompatActivity() {
             .addOnSuccessListener { objects ->
                 if (finishing || isDestroyed) return@addOnSuccessListener
                 val first = pickFirstItem(objects.map { RectF(it.boundingBox) }, barcode, bitmap.width, bitmap.height)
-                if (first == null) {
-                    finishCount(product, null, null)
-                    return@addOnSuccessListener
-                }
-                worker.execute {
-                    var result: ShapeCounter.Result? = null
-                    var thumb: Bitmap? = null
-                    try {
-                        val r = ShapeCounter.count(bitmap, first)
-                        result = r
-                        thumb = renderThumbnail(bitmap, r)
-                    } catch (t: Throwable) {
-                        // Count failed on this frame; the next frame will try again.
-                    }
-                    runOnUiThread { finishCount(product, result, thumb) }
-                }
+                countInBackground(product, bitmap, first)
             }
             .addOnFailureListener {
-                if (!finishing && !isDestroyed) finishCount(product, null, null)
+                if (finishing || isDestroyed) return@addOnFailureListener
+                // No object detection: estimate the first item from the barcode.
+                countInBackground(product, bitmap, pickFirstItem(emptyList(), barcode, bitmap.width, bitmap.height))
             }
     }
 
-    private fun finishCount(product: Product, result: ShapeCounter.Result?, thumb: Bitmap?) {
+    private fun countInBackground(product: Product, bitmap: Bitmap, first: RectF) {
+        worker.execute {
+            var result: ShapeCounter.Result? = null
+            var thumb: Bitmap? = null
+            try {
+                val r = ShapeCounter.count(bitmap, first)
+                result = r
+                thumb = renderThumbnail(bitmap, r)
+            } catch (t: Throwable) {
+                // Count failed on this frame; the next frame will try again.
+            }
+            runOnUiThread { finishCount(product, bitmap, result, thumb) }
+        }
+    }
+
+    private fun finishCount(product: Product, bitmap: Bitmap, result: ShapeCounter.Result?, thumb: Bitmap?) {
         busy = false
         countingValue = null
         lastJobEndedAt = SystemClock.elapsedRealtime()
         if (finishing || isDestroyed) return
         product.lastCountedAt = lastJobEndedAt
+
+        // Show the counted items on the live image for a moment.
+        if (result != null && overlay.width > 0) {
+            val sx = overlay.width.toFloat() / bitmap.width
+            val sy = overlay.height.toFloat() / bitmap.height
+            fun toView(r: RectF) = RectF(r.left * sx, r.top * sy, r.right * sx, r.bottom * sy)
+            overlay.setItems(toView(result.reference), result.others.map { toView(it) })
+            overlay.removeCallbacks(clearItems)
+            overlay.postDelayed(clearItems, ITEM_SHOW_MS)
+        }
 
         // Ignore results for a product that was reset or fixed by hand meanwhile.
         if (result != null && products[product.value] === product && !product.manual) {
@@ -320,21 +333,38 @@ class ScanActivity : AppCompatActivity() {
         updateUi()
     }
 
-    /** The detected object closest to the barcode (the smallest one if it contains it). */
-    private fun pickFirstItem(boxes: List<RectF>, barcode: RectF, w: Int, h: Int): RectF? {
+    /**
+     * The first item of the row: the detected object closest to the barcode (the smallest
+     * one if several contain it). Objects not much bigger than the barcode itself (e.g. the
+     * barcode sticker) are ignored. Without a usable object, the item is estimated from the
+     * barcode: a product above it, about 3 barcodes wide and 7.5 tall.
+     */
+    private fun pickFirstItem(boxes: List<RectF>, barcode: RectF, w: Int, h: Int): RectF {
         val imageArea = w.toFloat() * h
+        val minArea = max(imageArea * 0.01f, barcode.width() * barcode.height() * 4f)
         val cx = barcode.centerX()
         val cy = barcode.centerY()
-        return boxes
+        val bw = max(barcode.width(), barcode.height())
+        val best = boxes
             .filter {
                 val area = it.width() * it.height()
-                area > imageArea * 0.01f && area < imageArea * 0.8f
+                area > minArea && area < imageArea * 0.8f && it.width() > bw * 1.3f
             }
-            .minWithOrNull(compareBy<RectF>({ box ->
+            .map { box ->
                 val dx = max(0f, max(box.left - cx, cx - box.right))
                 val dy = max(0f, max(box.top - cy, cy - box.bottom))
-                hypot(dx, dy)
-            }, { box -> box.width() * box.height() }))
+                box to hypot(dx, dy)
+            }
+            .filter { (_, d) -> d < bw * 2f }
+            .minWithOrNull(compareBy<Pair<RectF, Float>>({ it.second }, { it.first.width() * it.first.height() }))
+            ?.first
+        if (best != null) return best
+
+        val bottom = min(h.toFloat(), barcode.bottom + barcode.height() * 0.3f)
+        return RectF(
+            max(0f, cx - 1.5f * bw), max(0f, bottom - 7.5f * bw),
+            min(w.toFloat(), cx + 1.5f * bw), bottom
+        )
     }
 
     /** A small picture of the counted area, with the items numbered (1 = first item). */
@@ -402,6 +432,7 @@ class ScanActivity : AppCompatActivity() {
         frameHits.clear()
         lastSeen.clear()
         lastValue = null
+        overlay.removeCallbacks(clearItems)
         overlay.clearAll()
         updateUi()
     }
@@ -483,6 +514,7 @@ class ScanActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        overlay.removeCallbacks(clearItems)
         cameraController?.clearImageAnalysisAnalyzer()
         scanner.close()
         objectDetector.close()
@@ -492,10 +524,11 @@ class ScanActivity : AppCompatActivity() {
     }
 
     companion object {
-        private const val CONFIRM_FRAMES = 3
+        private const val CONFIRM_FRAMES = 2
         private const val HIT_RESET_MS = 2000L
-        private const val RECOUNT_MS = 1500L
-        private const val MIN_GAP_MS = 300L
+        private const val RECOUNT_MS = 900L
+        private const val MIN_GAP_MS = 150L
+        private const val ITEM_SHOW_MS = 2500L
         private const val THUMB_MAX_PX = 360
     }
 }

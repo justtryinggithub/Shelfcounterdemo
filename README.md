@@ -33,16 +33,23 @@ Everything runs on the device (bundled ML Kit models + OpenCV), so no internet i
 
 ## How counting works
 
-`ShapeCounter.kt` extracts SIFT keypoints (OpenCV) from the counted frame. Keypoints inside
-the first item's box are the model; every other keypoint is matched to it, and RANSAC groups
-the matches into similarity transforms (shift + scale + rotation). Each group with enough
-matches is one more copy of the product. Items further back can be smaller and partly
-hidden. Tips for a good count:
+`ShapeCounter.kt` runs two methods on the counted frame and keeps the higher count:
 
-- shoot the row **at an angle**, not straight on: an item completely hidden behind the
-  first one cannot be counted;
-- keep the image **sharp** (slow down on each row, tap to focus, use the light if dim);
-- products with printed labels work best; plain, featureless boxes give few keypoints.
+- **Same label** – SIFT keypoints (OpenCV) inside the first item's box are the model; every
+  other keypoint is matched to it and RANSAC groups the matches into similarity transforms
+  (shift + scale + rotation). Each group with enough matches is one more copy.
+- **Same shape** – the top of the first item (cap and neck) is searched at smaller scales
+  (colour + edge correlation, mean-colour check) and a chain is followed from the first
+  item: each next item is a bit smaller, close to the previous one, in a consistent
+  direction. This counts same-shaped containers even when the labels differ.
+
+The first item is the ML Kit object closest to the barcode that is clearly bigger than the
+barcode; if none is found it is estimated from the barcode position. After each count the
+numbered boxes are drawn on the live image for 2.5 s. Tips for a good count:
+
+- shoot the row **at an angle**, not straight on, so each cap is visible;
+- keep the first item **whole and in focus** (not too close), use the light if dim;
+- slow down on each row: about one second per row is enough.
 
 ## Get the APK
 
