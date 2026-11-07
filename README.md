@@ -7,24 +7,30 @@ any Android 8.0+ phone.
 ## What it does
 
 1. **Welcome page** with a **Start counting** button (asks for camera permission).
-2. **Camera screen**, step 1 – **read the barcode** of the first item of a row
-   (on the product or on the shelf-edge label). After 3 consistent reads it is saved:
+2. **Camera screen** (version 2.6) – point at the **barcode** of the first item of a row
+   (on the product or on the shelf-edge label). After 3 consistent reads it is taken:
    green frame, beep, number shown in the top panel.
-3. Step 2 – frame the **whole row from an angle** (so every item behind the first one is
-   at least partly visible) and tap **Count items**. The image is frozen and:
-   - the item closest to the barcode is taken as the **first item** (ML Kit object detection);
-   - identical items are found by **shape** and numbered on the photo (1 = first item);
-   - the top panel shows the barcode and the **count of identical items**.
-   If the first item is wrong or not found, **drag a box around it** to count again;
-   **− / +** fix the count by hand. **Save count** adds it to the list, **Retake** goes back.
+3. Counting then **starts by itself** – keep the whole row in view from an angle:
+   - the app **counts twice**, on two different camera frames (the camera stays live);
+     the item closest to the barcode is the **first item** (ML Kit object detection) and
+     identical items are found by shape;
+   - if **both counts are the same**, the value is **saved in the list**, the counted items
+     are shown on the camera image for a moment and the message
+     **"Count done. Looking for the next barcode"** appears; the camera stays open;
+   - when a **new barcode** (one not counted yet) is read, the message disappears and the
+     same steps start again for that product;
+   - if the two counts **differ**, the last frame is frozen with the numbered items: drag a
+     box around the first item to count again, fix with **− / +**, then **Save count**;
+     **Retake** goes back to the camera;
+   - **Recount items** repeats the double count for the current barcode (the new value
+     replaces the old one). Barcodes already in the list do not start a count by themselves.
 4. **Close camera** (or the back gesture) opens the result list, one line per product:
 
    ```
    8001234567890   number of objects = 6
    ```
 
-   The list can be shared (WhatsApp, email, etc.) as plain text. Saving the same barcode
-   twice adds the counts together.
+   The list can be shared (WhatsApp, email, etc.) as plain text. Each barcode appears once.
 
 Supported codes: EAN-13, EAN-8, UPC-A, UPC-E, Code 128, Code 39, Code 93, ITF, Codabar.
 Everything runs on the device (bundled ML Kit models + OpenCV), so no internet is needed.
@@ -39,7 +45,7 @@ hidden. Tips for a good count:
 
 - shoot the row **at an angle**, not straight on: an item completely hidden behind the
   first one cannot be counted;
-- keep the image **sharp** (tap to focus before Count items, use the light if dim);
+- keep the image **sharp** and the phone still while it counts (tap to focus, use the light if dim);
 - products with printed labels work best; plain, featureless boxes give few keypoints.
 
 ## Get the APK

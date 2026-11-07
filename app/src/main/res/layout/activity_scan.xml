@@ -133,6 +133,25 @@
                 android:textColor="@color/on_dark"
                 android:textSize="15sp" />
 
+            <TextView
+                android:id="@+id/doneBanner"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_marginStart="24dp"
+                android:layout_marginEnd="24dp"
+                android:background="@drawable/bg_done_banner"
+                android:gravity="center"
+                android:paddingStart="24dp"
+                android:paddingTop="16dp"
+                android:paddingEnd="24dp"
+                android:paddingBottom="16dp"
+                android:text="@string/count_done"
+                android:textColor="@android:color/white"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
             <ProgressBar
                 android:id="@+id/progress"
                 android:layout_width="64dp"
