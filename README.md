@@ -7,10 +7,11 @@ any Android 8.0+ phone.
 ## What it does
 
 1. **Welcome page** with a **Start counting** button (asks for camera permission).
-2. **Camera screen** (version 2.6) – point at the **barcode** of the first item of a row
+2. **Camera screen** (version 2.7) – point at the **barcode** of the first item of a row
    (on the product or on the shelf-edge label). After 3 consistent reads it is taken:
-   green frame, beep, number shown in the top panel.
-3. Counting then **starts by itself** – keep the whole row in view from an angle:
+   green frame, beep, number shown in the top panel and the message
+   **"Barcode acquired. I'll count in 1 second"**.
+3. One second later counting **starts by itself** – keep the whole row in view from an angle:
    - the app **counts twice**, on two different camera frames (the camera stays live);
      the item closest to the barcode is the **first item** (ML Kit object detection) and
      identical items are found by shape;
@@ -41,7 +42,13 @@ Everything runs on the device (bundled ML Kit models + OpenCV), so no internet i
 the first item's box are the model; every other keypoint is matched to it, and RANSAC groups
 the matches into similarity transforms (shift + scale + rotation). Each group with enough
 matches is one more copy of the product. Items further back can be smaller and partly
-hidden. Tips for a good count:
+hidden.
+
+**Colour check (2.7):** a copy must also have the same colours in the same places of its
+shape. A grid of points on the first item is carried onto each copy with its transform and
+the colours are compared (Lab, lightness counts less) where the copy is visible; if fewer
+than half match, it is a different product (e.g. another fragrance in the same bottle)
+and is not counted. Tips for a good count:
 
 - shoot the row **at an angle**, not straight on: an item completely hidden behind the
   first one cannot be counted;

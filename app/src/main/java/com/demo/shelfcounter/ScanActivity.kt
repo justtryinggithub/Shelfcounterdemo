@@ -57,6 +57,9 @@ import kotlin.math.max
  *  3. REVIEW    – numbered boxes on the photo; the user can redraw the first item,
  *                 adjust the count with −/+, then Save or Retake.
  *
+ * Version 2.7: a new barcode shows "Barcode acquired, counting in 1 second"; one second
+ * later counting starts. Copies must also match the first item's colours (ShapeCounter).
+ *
  * Version 2.6: as soon as a new barcode is read the app counts automatically, twice, on
  * two different frames. If both counts agree the value is saved in the list, the camera
  * stays open and "Count done. Looking for the next barcode" is shown until a new barcode
@@ -284,8 +287,10 @@ class ScanActivity : AppCompatActivity() {
         })
 
         if (newlySaved) {
-            // New barcode: the "count done" message goes away and counting starts by itself.
+            // New barcode: the "count done" message goes away, "barcode acquired" is shown
+            // and counting starts by itself one second later.
             setWaitingNext(false)
+            showBanner(R.string.barcode_acquired, R.drawable.bg_acquired_banner)
             feedback()
             pulse(lastBarcode)
             updateUi()
@@ -420,8 +425,15 @@ class ScanActivity : AppCompatActivity() {
 
     private fun setWaitingNext(waiting: Boolean) {
         waitingNext = waiting
-        doneBanner.visibility = if (waiting) View.VISIBLE else View.GONE
+        if (waiting) showBanner(R.string.count_done, R.drawable.bg_done_banner)
+        else doneBanner.visibility = View.GONE
         updateUi()
+    }
+
+    private fun showBanner(text: Int, background: Int) {
+        doneBanner.setText(text)
+        doneBanner.setBackgroundResource(background)
+        doneBanner.visibility = View.VISIBLE
     }
 
     /** The detected object closest to the barcode; without a barcode, the biggest one. */
@@ -638,7 +650,7 @@ class ScanActivity : AppCompatActivity() {
     companion object {
         private const val CONFIRM_FRAMES = 3
         private const val BARCODE_RECENT_MS = 1500L
-        private const val AUTO_START_MS = 400L
+        private const val AUTO_START_MS = 1000L
         private const val SECOND_PASS_MS = 400L
         private const val ITEM_SHOW_MS = 2500L
     }
