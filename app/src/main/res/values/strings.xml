@@ -44,13 +44,13 @@
     <string name="status_saved">%1$s · saved</string>
     <string name="status_counted">%1$s · counted</string>
     <string name="hint_scan_barcode">Point the camera at the barcode of the first item in the row (on the product or on the shelf label).</string>
-    <string name="hint_frame_row">Barcode acquired. Keep the whole row in view from an angle, so every item is at least partly visible: counting starts in 1 second.</string>
+    <string name="hint_frame_row">Barcode acquired. Keep the whole row in view from an angle, so every item is at least partly visible: counting starts in 2 seconds.</string>
     <string name="status_counting">%1$s · counting…</string>
     <string name="status_in_list">%1$s · saved in the list</string>
     <string name="hint_counting_pass">Counting identical items (%1$d of 2)… keep the phone still.</string>
     <string name="hint_counts_differ">The two counts differ (%1$d and %2$d). Check the boxes: drag a box around the first item to count again or fix with − / +, then Save count. Retake goes back to the camera.</string>
     <string name="hint_next">Point at the next barcode. Tap Recount items to count this row again.</string>
-    <string name="barcode_acquired">Barcode acquired.\nI\'ll count in 1 second</string>
+    <string name="barcode_acquired">Barcode acquired.\nIn 2 seconds I\'ll count the items</string>
     <string name="count_done">Count done.\nLooking for the next barcode</string>
     <string name="hint_finding">Looking for the first item…</string>
     <string name="hint_counting">Counting identical items…</string>

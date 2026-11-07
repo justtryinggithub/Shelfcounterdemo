@@ -3,7 +3,6 @@ package com.demo.shelfcounter
 import android.graphics.Bitmap
 import android.graphics.RectF
 import org.opencv.android.Utils
-import org.opencv.core.CvType
 import org.opencv.core.Mat
 import org.opencv.core.MatOfKeyPoint
 import org.opencv.core.Size
@@ -41,15 +40,6 @@ object ShapeCounter {
     private const val MIN_SCALE = 0.3
     private const val MAX_SCALE = 1.6
     private const val SAME_BOX_IOU = 0.6f
-
-    // Colour check: an item must also have the same colours in the same places of its shape.
-    private const val COLOR_WIDTH = 300
-    private const val GRID_X = 16
-    private const val GRID_Y = 32
-    private const val L_WEIGHT = 0.3f
-    private const val MAX_COLOR_DIST = 18f
-    private const val MIN_COLOR_MATCH = 0.5f
-    private const val MIN_COMPARED_POINTS = 40
 
     class Result(
         /** First item, in bitmap coordinates. */
@@ -140,7 +130,6 @@ object ShapeCounter {
             // 2) Group matches into copies of the product with RANSAC.
             val refBox = RectF(rx0.toFloat(), ry0.toFloat(), rx1.toFloat(), ry1.toFloat())
             val found = ArrayList<RectF>()
-            val foundT = ArrayList<Similarity>()
             val random = Random(1)
             var remaining = srcX.indices.toMutableList()
             val thrSq = INLIER_PX * INLIER_PX
@@ -182,87 +171,15 @@ object ShapeCounter {
                 if (iou(box, refBox) > SAME_BOX_IOU) continue
                 if (found.any { iou(box, it) > SAME_BOX_IOU }) continue
                 found.add(box)
-                foundT.add(t)
             }
 
             val inv = (1.0 / f).toFloat()
-            val boxes = found.map { RectF(it.left * inv, it.top * inv, it.right * inv, it.bottom * inv) }
-            val others = sameColours(rgba, bitmap.width, bitmap.height, f, reference, boxes, foundT)
+            val others = found.map { RectF(it.left * inv, it.top * inv, it.right * inv, it.bottom * inv) }
             return Result(RectF(reference), others, srcX.size)
         } finally {
             rgba.release(); small.release(); gray.release(); mask.release()
             keyPointMat.release(); descriptors.release()
             if (argb !== bitmap) argb.recycle()
-        }
-    }
-
-    /**
-     * Keeps only the copies whose colours match the first item point by point: a grid of
-     * points on the first item is carried onto each copy with its transform, and the colours
-     * (Lab, lightness weighted less because of shadows and distance) are compared where the
-     * copy is visible (not hidden by an item in front of it). Different products with the
-     * same container (e.g. other fragrances) fail this check.
-     */
-    private fun sameColours(
-        rgba: Mat, w: Int, h: Int, f: Double,
-        reference: RectF, boxes: List<RectF>, transforms: List<Similarity>
-    ): List<RectF> {
-        if (boxes.isEmpty()) return boxes
-        val g = min(1.0, COLOR_WIDTH.toDouble() / w)
-        val small = Mat()
-        val rgb = Mat()
-        val lab = Mat()
-        try {
-            Imgproc.resize(
-                rgba, small,
-                Size(max(1L, Math.round(w * g)).toDouble(), max(1L, Math.round(h * g)).toDouble()),
-                0.0, 0.0, Imgproc.INTER_AREA
-            )
-            Imgproc.cvtColor(small, rgb, Imgproc.COLOR_RGBA2RGB)
-            Imgproc.GaussianBlur(rgb, rgb, Size(5.0, 5.0), 0.0)
-            Imgproc.cvtColor(rgb, lab, Imgproc.COLOR_RGB2Lab)
-            val lw = lab.cols()
-            val lh = lab.rows()
-            if (lab.type() != CvType.CV_8UC3 || lw == 0 || lh == 0) return boxes
-            val px = ByteArray(lw * lh * 3)
-            lab.get(0, 0, px)
-            fun at(x: Double, y: Double, c: Int): Float {
-                val ix = min(lw - 1, max(0, (x * g).toInt()))
-                val iy = min(lh - 1, max(0, (y * g).toInt()))
-                return (px[(iy * lw + ix) * 3 + c].toInt() and 0xFF).toFloat()
-            }
-
-            // Front to back: bigger copies are closer to the camera.
-            val order = boxes.indices.sortedByDescending { transforms[it].scale }
-            val front = ArrayList<RectF>().apply { add(reference) }
-            val keep = BooleanArray(boxes.size) { true }
-            for (i in order) {
-                val t = transforms[i]
-                var compared = 0
-                var matching = 0
-                for (gy in 0 until GRID_Y) {
-                    for (gx in 0 until GRID_X) {
-                        val sx = reference.left + (gx + 0.5) / GRID_X * reference.width()
-                        val sy = reference.top + (gy + 0.5) / GRID_Y * reference.height()
-                        val qx = t.x(sx * f, sy * f) / f
-                        val qy = t.y(sx * f, sy * f) / f
-                        if (qx < 0 || qy < 0 || qx >= w || qy >= h) continue
-                        if (front.any { qx >= it.left && qx <= it.right && qy >= it.top && qy <= it.bottom }) continue
-                        val dl = (at(sx, sy, 0) - at(qx, qy, 0)) * L_WEIGHT
-                        val da = at(sx, sy, 1) - at(qx, qy, 1)
-                        val db = at(sx, sy, 2) - at(qx, qy, 2)
-                        compared++
-                        if (dl * dl + da * da + db * db < MAX_COLOR_DIST * MAX_COLOR_DIST) matching++
-                    }
-                }
-                if (compared >= MIN_COMPARED_POINTS && matching.toFloat() / compared < MIN_COLOR_MATCH) {
-                    keep[i] = false
-                }
-                front.add(boxes[i])
-            }
-            return boxes.filterIndexed { i, _ -> keep[i] }
-        } finally {
-            small.release(); rgb.release(); lab.release()
         }
     }
 
