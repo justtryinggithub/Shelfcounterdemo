@@ -11,8 +11,8 @@ android {
         applicationId = "com.demo.shelfcounter"
         minSdk = 26
         targetSdk = 35
-        versionCode = 28
-        versionName = "2.8"
+        versionCode = 29
+        versionName = "2.9"
 
         // Samsung A56 and nearly all current phones are 64-bit ARM; keeps the APK small.
         ndk {

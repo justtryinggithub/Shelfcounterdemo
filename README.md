@@ -7,28 +7,29 @@ any Android 8.0+ phone.
 ## What it does
 
 1. **Welcome page** with a **Start counting** button (asks for camera permission).
-2. **Camera screen** (version 2.8, built on 2.6) – point at the **barcode** of the first item
-   of a row (on the product or on the shelf-edge label). After 3 consistent reads it is taken:
-   green frame, beep, number shown in the top panel and the message
-   **"Barcode acquired. In 2 seconds I'll count the items"**.
+2. **Camera screen** (version 2.9, Italian interface) – point at the **barcode** of the first
+   item of a row (on the product or on the shelf-edge label). After 3 consistent reads it is
+   taken: green frame, beep, number shown in the top panel and the message
+   **"Codice a barre acquisito. Tra 2 secondi conto i prodotti"**.
 3. Two seconds later counting **starts by itself** – keep the whole row in view from an angle:
-   - the app **counts twice**, on two different camera frames (the camera stays live);
+   - the app **counts three times**, on three different camera frames (the camera stays live);
      the item closest to the barcode is the **first item** (ML Kit object detection) and
      identical items are found by shape;
-   - if **both counts are the same**, the value is **saved in the list**, the counted items
-     are shown on the camera image for a moment and the message
-     **"Count done. Looking for the next barcode"** appears; the camera stays open;
+   - if **at least two counts are the same**, that value is **saved in the list** (the odd one
+     out is ignored), the counted items are shown on the camera image for a moment and the
+     message **"Conteggio completato. Cerco il prossimo codice a barre"** appears; the camera
+     stays open;
    - when a **new barcode** (one not counted yet) is read, the message disappears and the
      same steps start again for that product;
-   - if the two counts **differ**, the last frame is frozen with the numbered items: drag a
-     box around the first item to count again, fix with **− / +**, then **Save count**;
-     **Retake** goes back to the camera;
-   - **Recount items** repeats the double count for the current barcode (the new value
-     replaces the old one). Barcodes already in the list do not start a count by themselves.
-4. **Close camera** (or the back gesture) opens the result list, one line per product:
+   - if **all three counts differ**, the last frame is frozen and the app asks for a
+     **retake** (**Riprova** goes back to the camera); alternatively drag a box around the
+     first item to count again, fix with **− / +**, then **Salva conteggio**;
+   - **Riconta** repeats the three counts for the current barcode (the new value replaces the
+     old one). Barcodes already in the list do not start a count by themselves.
+4. **Chiudi fotocamera** (or the back gesture) opens the result list, one line per product:
 
    ```
-   8001234567890   number of objects = 6
+   8001234567890   numero di oggetti = 6
    ```
 
    The list can be shared (WhatsApp, email, etc.) as plain text. Each barcode appears once.

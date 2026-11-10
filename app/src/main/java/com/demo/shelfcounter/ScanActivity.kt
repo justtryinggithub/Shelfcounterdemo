@@ -57,6 +57,9 @@ import kotlin.math.max
  *  3. REVIEW    – numbered boxes on the photo; the user can redraw the first item,
  *                 adjust the count with −/+, then Save or Retake.
  *
+ * Version 2.9: three counts on three frames; a value found at least twice is saved,
+ * all three different -> the last frame is frozen and a retake is requested. Italian UI.
+ *
  * Version 2.8 (from 2.6): a new barcode shows "Barcode acquired, in 2 seconds I'll count
  * the items"; two seconds later counting starts.
  *
@@ -111,7 +114,8 @@ class ScanActivity : AppCompatActivity() {
 
     // Double count (2.6).
     private var pass = 0
-    private var firstPassCount = 0
+    private val passCounts = ArrayList<Int>()
+    private val passFrames = ArrayList<Pair<Bitmap, ShapeCounter.Result>>()
     private var waitingNext = false
     private lateinit var doneBanner: TextView
     private val clearItems = Runnable { if (mode == Mode.SCANNING) overlay.setItems(null, emptyList()) }
@@ -317,7 +321,8 @@ class ScanActivity : AppCompatActivity() {
         setWaitingNext(false)
         overlay.clearAll()
         pass = 1
-        firstPassCount = 0
+        passCounts.clear()
+        passFrames.clear()
         countPass()
     }
 
@@ -336,7 +341,7 @@ class ScanActivity : AppCompatActivity() {
             SystemClock.elapsedRealtime() - lastBarcodeSeenAt < BARCODE_RECENT_MS
         }
 
-        setMode(Mode.COUNTING, getString(R.string.hint_counting_pass, pass))
+        setMode(Mode.COUNTING, getString(R.string.hint_counting_pass, pass, PASSES))
 
         val job = ++countJob
         objectDetector.process(InputImage.fromBitmap(bitmap, 0))
@@ -365,19 +370,30 @@ class ScanActivity : AppCompatActivity() {
             }
             runOnUiThread {
                 if (isFinishing || isDestroyed || job != countJob || mode != Mode.COUNTING) return@runOnUiThread
-                if (pass == 1) {
-                    // First count done: take the second one on a new frame.
-                    firstPassCount = result.count
-                    pass = 2
+                passCounts.add(result.count)
+                passFrames.add(bitmap to result)
+                if (pass < PASSES) {
+                    // Take the next count on a new frame.
+                    pass++
                     countValue = result.count
-                    updateUi(getString(R.string.hint_counting_pass, pass))
+                    updateUi(getString(R.string.hint_counting_pass, pass, PASSES))
+                    val next = pass
                     overlay.postDelayed({
-                        if (job == countJob && mode == Mode.COUNTING && pass == 2) countPass()
+                        if (job == countJob && mode == Mode.COUNTING && pass == next) countPass()
                     }, SECOND_PASS_MS)
                 } else {
                     pass = 0
-                    if (result.count == firstPassCount) countsAgree(bitmap, result)
-                    else countsDiffer(bitmap, result)
+                    // Majority: a value found at least twice wins; all different -> retake.
+                    val majority = passCounts.groupingBy { it }.eachCount()
+                        .filter { it.value >= 2 }.keys.firstOrNull()
+                    if (majority == null) {
+                        countsDiffer(bitmap, result)
+                    } else {
+                        // Show the boxes of the latest frame that gave the majority value.
+                        val (frame, best) = passFrames.last { it.second.count == majority }
+                        countsAgree(frame, best)
+                    }
+                    passFrames.clear()
                 }
             }
         }
@@ -402,7 +418,7 @@ class ScanActivity : AppCompatActivity() {
         overlay.postDelayed(clearItems, ITEM_SHOW_MS)
     }
 
-    /** The two counts differ: freeze the last frame so the user can check and fix it. */
+    /** All counts differ: freeze the last frame and ask for a retake (or a manual fix). */
     private fun countsDiffer(bitmap: Bitmap, result: ShapeCounter.Result) {
         frozenBitmap = bitmap
         frozenView.setImageBitmap(bitmap)
@@ -412,7 +428,7 @@ class ScanActivity : AppCompatActivity() {
         fun toView(r: RectF) = RectF(r.left * sx, r.top * sy, r.right * sx, r.bottom * sy)
         overlay.setItems(toView(result.reference), result.others.map { toView(it) })
         countValue = result.count
-        setMode(Mode.REVIEW, getString(R.string.hint_counts_differ, firstPassCount, result.count))
+        setMode(Mode.REVIEW, getString(R.string.hint_counts_differ, passCounts.joinToString(", ")))
     }
 
     private fun freezeAndAskToDraw(bitmap: Bitmap) {
@@ -572,7 +588,7 @@ class ScanActivity : AppCompatActivity() {
         val saved = value?.let { results[it] }
         lastCount.text = when {
             mode == Mode.REVIEW -> countValue.toString()
-            mode == Mode.COUNTING && pass == 2 -> countValue.toString()
+            mode == Mode.COUNTING && pass >= 2 -> countValue.toString()
             saved != null -> saved.count.toString()
             else -> "–"
         }
@@ -652,6 +668,7 @@ class ScanActivity : AppCompatActivity() {
         private const val BARCODE_RECENT_MS = 1500L
         private const val AUTO_START_MS = 2000L
         private const val SECOND_PASS_MS = 400L
+        private const val PASSES = 3
         private const val ITEM_SHOW_MS = 2500L
     }
 }
